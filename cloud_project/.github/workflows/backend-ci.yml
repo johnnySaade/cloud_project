@@ -1,0 +1,46 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: SSH into EC2 and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Go to project folder
+            cd ~/cloud_project
+
+            # If repo doesn't exist yet, clone it (first deployment)
+            if [ ! -d ".git" ]; then
+              rm -rf *
+              git clone https://github.com/johnnysaade/cloud_project.git .
+            else
+              git pull origin main
+            fi
+
+            # Install backend dependencies
+            cd backend
+            npm install
+
+            # Ensure pm2 is installed
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm install -g pm2
+            fi
+
+            # Start or restart app with pm2
+            pm2 start index.js --name weather-backend || pm2 restart weather-backend
+            pm2 save
