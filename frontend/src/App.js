@@ -1,6 +1,6 @@
 import { useState } from "react";
 import "./App.css";
-
+//trigger test
 function getWeatherInfo(code) {
   const c = Number(code);
 
