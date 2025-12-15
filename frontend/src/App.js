@@ -1,6 +1,7 @@
 import { useState } from "react";
 import "./App.css";
-//trigger test
+
+// Open-Meteo weather codes -> label + emoji
 function getWeatherInfo(code) {
   const c = Number(code);
 
@@ -17,11 +18,22 @@ function getWeatherInfo(code) {
   return { text: "Unknown", icon: "❔" };
 }
 
-function App() {
+function formatDate(dateString) {
+  const d = new Date(dateString);
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export default function App() {
   const [city, setCity] = useState("");
   const [weather, setWeather] = useState(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
+  // ⚠️ Your EC2 backend
   const API_BASE = "http://3.79.28.121:4000";
 
   const fetchWeather = async (e) => {
@@ -29,56 +41,109 @@ function App() {
     setError("");
     setWeather(null);
 
-    if (!city) {
-      setError("Please enter a city");
+    const trimmed = city.trim();
+    if (!trimmed) {
+      setError("Please enter a city (e.g. Beirut)");
       return;
     }
 
+    setLoading(true);
     try {
       const res = await fetch(
-        `${API_BASE}/api/weather?city=${encodeURIComponent(city)}`
+        `${API_BASE}/api/weather?city=${encodeURIComponent(trimmed)}`
       );
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setError(data.error || "Backend error");
+        setLoading(false);
         return;
       }
 
       setWeather(data);
-    } catch {
-      setError("Failed to fetch weather");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to fetch weather. Is the backend running?");
+    } finally {
+      setLoading(false);
     }
   };
 
+  const currentInfo = weather ? getWeatherInfo(weather.current.weathercode) : null;
+
   return (
     <div className="app">
-      <h1>City Weather App</h1>
+      <div className="card-main">
+        {/* Title */}
+        <header className="header">
+          <h1 className="title">City Weather App</h1>
+          <p className="subtitle">Search any city and get current weather + 3-day forecast</p>
+        </header>
 
-      <form onSubmit={fetchWeather}>
-        <input
-          placeholder="Enter city"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-        />
-        <button type="submit">Get Weather</button>
-      </form>
+        {/* Form */}
+        <form className="form" onSubmit={fetchWeather}>
+          <input
+            type="text"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="Enter a city (e.g. Jounieh)"
+          />
+          <button type="submit" disabled={loading}>
+            {loading ? "Loading..." : "Get Weather"}
+          </button>
+        </form>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+        {error && <p className="error">{error}</p>}
 
-      {weather && (
-        <div>
-          <h2>
-            {weather.city}, {weather.country}
-          </h2>
-          <p>
-            {getWeatherInfo(weather.current.weathercode).icon}{" "}
-            {weather.current.temperature}°C
-          </p>
-        </div>
-      )}
+        {/* Results */}
+        {weather && (
+          <div className="results">
+            <section className="current">
+              <h2 className="place">
+                {weather.city}, {weather.country}
+              </h2>
+
+              <div className="current-main">
+                <span className="icon">{currentInfo.icon}</span>
+                <span className="temp">
+                  {Math.round(weather.current.temperature)}°C
+                </span>
+              </div>
+
+              <p className="desc">{currentInfo.text}</p>
+
+              <p className="meta">
+                Wind: {weather.current.windspeed} km/h
+                <span className="dot">•</span>
+                Time:{" "}
+                {new Date(weather.current.time).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            </section>
+
+            <section className="forecast">
+              <h3>Next days</h3>
+              <div className="forecast-grid">
+                {weather.forecast.map((day) => {
+                  const info = getWeatherInfo(day.weathercode);
+                  return (
+                    <div className="forecast-card" key={day.date}>
+                      <p className="forecast-date">{formatDate(day.date)}</p>
+                      <div className="forecast-icon">{info.icon}</div>
+                      <p className="forecast-desc">{info.text}</p>
+                      <p className="forecast-temp">
+                        {Math.round(day.temp_max)}° / {Math.round(day.temp_min)}°
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-export default App;
