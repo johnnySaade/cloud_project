@@ -34,6 +34,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Sync build folder to S3
+      # Upload everything except index.html with long cache (fast)
+      - name: Sync static assets (cached)
         run: |
-          aws s3 sync frontend/build s3://${{ secrets.S3_BUCKET_NAME }} --delete
+          aws s3 sync frontend/build s3://${{ secrets.S3_BUCKET_NAME }} \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "public,max-age=31536000,immutable"
+
+      # Upload index.html with no-cache so updates show immediately
+      - name: Upload index.html (no cache)
+        run: |
+          aws s3 cp frontend/build/index.html s3://${{ secrets.S3_BUCKET_NAME }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
