@@ -1,0 +1,46 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH into EC2 and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            # Get latest code
+            if [ ! -d "$HOME/cloud_project/.git" ]; then
+              rm -rf $HOME/cloud_project
+              git clone https://github.com/johnnysaade/cloud_project.git $HOME/cloud_project
+            else
+              cd $HOME/cloud_project
+              git pull origin main
+            fi
+
+            # Write env file from GitHub Secret
+            cd $HOME/cloud_project/backend
+            cat > .env << 'EOF'
+            ${{ secrets.ENV_FILE }}
+            EOF
+
+            # Install deps
+            npm install
+
+            # Restart backend (simple method without pm2)
+            # Kill any process running on port 4000 then start again in background
+            sudo fuser -k 4000/tcp || true
+            nohup node index.js > server.log 2>&1 &
+            echo "✅ Backend deployed and started"
