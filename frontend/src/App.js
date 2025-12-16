@@ -1,10 +1,8 @@
 import { useState } from "react";
 import "./App.css";
 
-// Open-Meteo weather codes -> label + emoji
 function getWeatherInfo(code) {
   const c = Number(code);
-
   if (c === 0) return { text: "Clear sky", icon: "☀️" };
   if (c === 1 || c === 2) return { text: "Partly cloudy", icon: "🌤️" };
   if (c === 3) return { text: "Overcast", icon: "☁️" };
@@ -14,7 +12,6 @@ function getWeatherInfo(code) {
   if ([71, 73, 75, 77, 85, 86].includes(c)) return { text: "Snow", icon: "❄️" };
   if (c === 95) return { text: "Thunderstorm", icon: "⛈️" };
   if (c === 96 || c === 99) return { text: "Storm & hail", icon: "🌩️" };
-
   return { text: "Unknown", icon: "❔" };
 }
 
@@ -27,13 +24,27 @@ function formatDate(dateString) {
   });
 }
 
+function formatDateTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function App() {
   const [city, setCity] = useState("");
   const [weather, setWeather] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // ⚠️ Your EC2 backend
   const API_BASE = "http://3.79.28.121:4000";
 
   const fetchWeather = async (e) => {
@@ -56,11 +67,15 @@ export default function App() {
 
       if (!res.ok) {
         setError(data.error || "Backend error");
-        setLoading(false);
         return;
       }
 
       setWeather(data);
+
+      // optional: refresh history after each search
+      if (showHistory) {
+        await fetchHistory();
+      }
     } catch (err) {
       console.error(err);
       setError("Failed to fetch weather. Is the backend running?");
@@ -69,18 +84,48 @@ export default function App() {
     }
   };
 
+  const fetchHistory = async () => {
+    setError("");
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/history`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data.error || "Failed to load history");
+        return;
+      }
+
+      setHistory(data);
+      setShowHistory(true);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to fetch history.");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const toggleHistory = async () => {
+    if (showHistory) {
+      setShowHistory(false);
+      return;
+    }
+    await fetchHistory();
+  };
+
   const currentInfo = weather ? getWeatherInfo(weather.current.weathercode) : null;
 
   return (
     <div className="app">
       <div className="card-main">
-        {/* Title */}
         <header className="header">
           <h1 className="title">City Weather App</h1>
-          <p className="subtitle">Search any city and get current weather + 3-day forecast</p>
+          <p className="subtitle">
+            Search any city and get current weather + 3-day forecast
+          </p>
         </header>
 
-        {/* Form */}
         <form className="form" onSubmit={fetchWeather}>
           <input
             type="text"
@@ -93,9 +138,23 @@ export default function App() {
           </button>
         </form>
 
+        <div className="actions-row">
+          <button
+            className="secondary-btn"
+            onClick={toggleHistory}
+            type="button"
+            disabled={loadingHistory}
+          >
+            {loadingHistory
+              ? "Loading history..."
+              : showHistory
+              ? "Hide history"
+              : "View history"}
+          </button>
+        </div>
+
         {error && <p className="error">{error}</p>}
 
-        {/* Results */}
         {weather && (
           <div className="results">
             <section className="current">
@@ -142,6 +201,35 @@ export default function App() {
               </div>
             </section>
           </div>
+        )}
+
+        {showHistory && (
+          <section className="history">
+            <h3 className="history-title">Recent searches</h3>
+
+            {history.length === 0 ? (
+              <p className="history-empty">No searches yet.</p>
+            ) : (
+              <div className="history-list">
+                {history.map((item, idx) => (
+                  <div className="history-item" key={`${item.created_at}-${idx}`}>
+                    <div className="history-left">
+                      <div className="history-city">
+                        {item.city}
+                        {item.country ? `, ${item.country}` : ""}
+                      </div>
+                      <div className="history-time">
+                        {formatDateTime(item.created_at)}
+                      </div>
+                    </div>
+                    <div className="history-temp">
+                      {Math.round(item.temperature)}°C
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
       </div>
     </div>
